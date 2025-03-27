@@ -11,6 +11,7 @@ wheels/
 
 # custom
 data/
+data_base/
 记录.md
 fetch_water_data.py
 test.py
