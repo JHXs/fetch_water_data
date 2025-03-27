@@ -1,0 +1,52 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>国家水质自动综合监管平台</title>
+    <meta charset="utf-8" />
+    <link href="/GJZ/Styles/Publish/Publish.css" rel="stylesheet" />
+</head>
+<body>
+    <div id="top" class="top">
+        <div class="fl topleft"></div>
+        <div class="fr topright">
+            <ul id="ul_menu" class="ul_menu">
+                <li rel="RealDatas.html" class="selected">实时数据</li>
+                <li rel="Explain.html">发布说明</li>
+            </ul>
+        </div>
+    </div>
+    <div style="height:60px;width:100%;">&nbsp;</div>
+    <div id="contentmaster">
+        <iframe id="MF" name="MF" frameborder="0" style="overflow: auto;height: 100%;width: 100%;"></iframe>
+    </div>
+    <div id="footer">
+        <div class="copyright">
+            版权所有：中国环境监测总站&emsp;
+        </div>
+        <div class="technical">
+            <a></a>
+        </div>
+    </div>
+</body>
+<script src="/Scripts/jquery-3.4.1.min.js" type="text/javascript"></script>
+<script src="/UILib/artDialog/FunctionJS.js?v2.0"></script>
+<link href="/UILib/artDialog/skins/blue.css" rel="stylesheet" type="text/css" />
+<script src="/UILib/artDialog/artDialog.source.js" type="text/javascript"></script>
+<script src="/Scripts/jquery-3.4.1.min.js" type="text/javascript"></script>
+<script src="/GJZ/Scripts/Publish/Publish.js"></script>
+<script type="text/javascript">
+    var pageName = RequestFrom("Page");
+    if (!pageName) {
+        pageName = "RealDatas";
+    }
+    $("#MF").attr("src", pageName + ".html");
+
+    $(function () {
+        $("#ul_menu li").click(function () {
+            $(this).addClass("selected").siblings().removeClass("selected");
+            $("#MF").attr("src", this.getAttribute("rel"));
+        });
+    })
+</script>
+</html>

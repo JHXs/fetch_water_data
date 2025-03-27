@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# custom
+data/
+记录.md
+fetch_water_data.py
+test.py
+test1.py
+*.log
