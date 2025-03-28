@@ -18,3 +18,4 @@ test.py
 test1.py
 *.log
 html/
+data.csv
