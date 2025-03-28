@@ -62,8 +62,8 @@ class WaterQualityMonitor:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 省份 TEXT NOT NULL,                  -- 监测点所在省份
                 流域 TEXT,                           -- 所属流域信息
-                城市 TEXT,                           -- 所在地市信息
-                河流 TEXT,                           -- 所属河流信息
+                所在地市 TEXT,                       -- 所在地市信息
+                所属河流 TEXT,                       -- 所属河流信息
                 断面名称 TEXT NOT NULL,              -- 监测断面名称
                 监测时间 TEXT NOT NULL,              -- 数据唯一性标识（格式：YYYY-MM-DD HH:MM）
                 水质类别 TEXT NOT NULL,              -- 水质分类等级
@@ -182,7 +182,7 @@ class WaterQualityMonitor:
                         )
                         
                         cursor.execute('''INSERT OR IGNORE INTO water_data 
-                            (省份, 流域, 城市, 河流, 断面名称, 监测时间, 水质类别,
+                            (省份, 流域, 所在地市, 所属河流, 断面名称, 监测时间, 水质类别,
                             水温, pH, 溶解氧, 电导率, 浊度,
                             高锰酸盐指数, 氨氮, 总磷, 总氮,
                             叶绿素α, 藻密度, 站点情况, raw_json)
