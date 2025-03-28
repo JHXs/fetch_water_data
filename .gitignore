@@ -17,3 +17,4 @@ fetch_water_data.py
 test.py
 test1.py
 *.log
+html/
