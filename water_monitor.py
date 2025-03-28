@@ -117,7 +117,7 @@ class WaterQualityMonitor:
         site_status = item.get("站点情况", {}).get("显示值", "")
         
         # 如果站点在维护，跳过时间校验
-        if site_status == "维护":
+        if site_status != "正常":
             logger.warning(f"断面 [{item['断面名称']['显示值']} 处于维护状态，跳过数据校验")
             return
 
@@ -132,18 +132,18 @@ class WaterQualityMonitor:
 
     def _save_to_db(self, data):
         """优化后的数据库存储"""
-        filtered_data = []
+        # filtered_data = []
     
-        # 预处理：过滤维护状态数据
-        for item in data:
-            site_status = item.get("站点情况", {}).get("显示值", "")
-            # 状态有效性检查
-            if site_status != "正常":
-                logger.warning(f"跳过状态为 [{site_status}] 的数据：{item['断面名称']['显示值']}")
-                continue
-            filtered_data.append(item)
+        # # 预处理：过滤维护状态数据
+        # for item in data:
+        #     site_status = item.get("站点情况", {}).get("显示值", "")
+        #     # 状态有效性检查
+        #     if site_status != "正常":
+        #         logger.warning(f"跳过状态为 [{site_status}] 的数据：{item['断面名称']['显示值']}")
+        #         continue
+        #     filtered_data.append(item)
 
-        if not filtered_data:
+        if not data:
             logger.warning("无有效数据需要存储")
             return
         success_count = 0
@@ -154,7 +154,7 @@ class WaterQualityMonitor:
                 # 开启事务
                 conn.execute("BEGIN TRANSACTION")
                 
-                for item in filtered_data:
+                for item in data:
                     try:
                         self._validate_data(item)
                         
