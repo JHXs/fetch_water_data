@@ -62,6 +62,8 @@ class WaterQualityMonitor:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 省份 TEXT NOT NULL,                  -- 监测点所在省份
                 流域 TEXT,                           -- 所属流域信息
+                城市 TEXT,                           -- 所在地市信息
+                河流 TEXT,                           -- 所属河流信息
                 断面名称 TEXT NOT NULL,              -- 监测断面名称
                 监测时间 TEXT NOT NULL,              -- 数据唯一性标识（格式：YYYY-MM-DD HH:MM）
                 水质类别 TEXT NOT NULL,              -- 水质分类等级
@@ -159,6 +161,8 @@ class WaterQualityMonitor:
                         insert_data = (
                             item["省份"]["显示值"],
                             item["流域"]["显示值"],
+                            item["所在地市"]["显示值"],
+                            item["所属河流"]["显示值"],
                             item["断面名称"]["显示值"],
                             item["监测时间"]["显示值"],
                             item["水质类别"]["显示值"],
@@ -178,11 +182,11 @@ class WaterQualityMonitor:
                         )
                         
                         cursor.execute('''INSERT OR IGNORE INTO water_data 
-                            (省份, 流域, 断面名称, 监测时间, 水质类别,
+                            (省份, 流域, 城市, 河流, 断面名称, 监测时间, 水质类别,
                             水温, pH, 溶解氧, 电导率, 浊度,
                             高锰酸盐指数, 氨氮, 总磷, 总氮,
                             叶绿素α, 藻密度, 站点情况, raw_json)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                             insert_data)
                         if cursor.rowcount > 0:
                             success_count += 1
@@ -340,7 +344,7 @@ class WaterQualityMonitor:
         cells = {
             "省份": row.query_selector("td.dq"),
             "流域": row.query_selector("td.ly"),
-            "断面名称": row.query_selector("td.MN span"), 
+            "断面名称": row.query_selector("td.MN span span"), 
             "监测时间": row.query_selector("td.dt"),
             "水质类别": row.query_selector("td.wt .sp_wt"),
             # 按HTML列顺序严格匹配（从第6个td开始为参数）
@@ -357,19 +361,7 @@ class WaterQualityMonitor:
             "藻密度": row.query_selector("td.parm:nth-child(16) span"),
             "站点情况": row.query_selector("td.parm1")  # 无tooltip，直接取文本
         }
-        # row_data = {}
-        # for key, element in cells.items():
-            # if element:
-            #     display_value = element.inner_text().strip()
-            #     raw_value = element.get_attribute("data-original-title")
-            #     # 处理原始值（仅当存在tooltip时）
-            #     if raw_value and "原始值" in raw_value:
-            #         raw_value = raw_value.split("：")[-1].strip()
-            #     else:
-            #         raw_value = None
-            #     row_data[key] = {"显示值": display_value, "原始值": raw_value}
-            # else:
-            #     row_data[key] = {"显示值": None, "原始值": None}
+
         parsed_data = {}
         for key, element in cells.items():
             try:
@@ -380,7 +372,21 @@ class WaterQualityMonitor:
                     display_value = self._complete_year(display_value)
                     if raw_value and "原始值" in raw_value:  # 如果原始值也需要处理
                         raw_value = self._complete_year(raw_value.split("：")[-1].strip())
-
+                
+                if key == "断面名称":
+                    parsed_data[key] = {"显示值": display_value, "原始值": raw_value}
+                    parts = raw_value.split("\n")  # 按换行分割文本
+                    # 解析所在地市
+                    if len(parts) >= 1:
+                        city_parts = parts[0].split(":")
+                        city = city_parts[1].strip() if len(city_parts) > 1 else ""  # 取冒号后内容
+                        parsed_data["所在地市"] = {"显示值": city, "原始值": None}
+                    # 解析所属河流
+                    if len(parts) >= 2:
+                        river_parts = parts[1].split(":")
+                        river = river_parts[1].strip() if len(river_parts) > 1 else ""
+                        parsed_data["所属河流"] = {"显示值": river, "原始值": None}
+                    
                 if raw_value and "原始值" in raw_value:
                     raw_value = raw_value.split("：")[-1].strip()
                 parsed_data[key] = {"显示值": display_value, "原始值": raw_value}
@@ -429,7 +435,7 @@ class WaterQualityMonitor:
         self._save_to_db(data)
 
         ### 备份数据库
-        self.backup_db()
+        # self.backup_db()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
@@ -438,7 +444,7 @@ class WaterQualityMonitor:
             with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
                 # 写入表头（根据字段顺序调整）
-                headers = ["省份", "流域", "断面名称", "监测时间", "水质类别", 
+                headers = ["省份", "流域", "所在地市", "所属河流", "断面名称", "监测时间", "水质类别", 
                         "水温_显示值", "水温_原始值", "pH_显示值", "pH_原始值", 
                         "溶解氧_显示值", "溶解氧_原始值", "电导率_显示值", "电导率_原始值",
                         "浊度_显示值", "浊度_原始值", "高锰酸盐指数_显示值", "高锰酸盐指数_原始值",
@@ -450,7 +456,8 @@ class WaterQualityMonitor:
                 # 写入数据行
                 for item in data:
                     row = [
-                        item["省份"]["显示值"], item["流域"]["显示值"], item["断面名称"]["显示值"],
+                        item["省份"]["显示值"], item["流域"]["显示值"], 
+                        item["所在地市"]["显示值"], item["所属河流"]["显示值"], item["断面名称"]["显示值"],
                         item["监测时间"]["显示值"], item["水质类别"]["显示值"],
                         item["水温"]["显示值"], item["水温"]["原始值"],
                         item["pH"]["显示值"], item["pH"]["原始值"],
