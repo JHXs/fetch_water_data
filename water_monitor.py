@@ -2,6 +2,7 @@ import csv
 import json
 import logging
 import random
+import sys
 import time
 import sqlite3
 from contextlib import closing
@@ -25,11 +26,11 @@ logger = logging.getLogger(__name__)
 
 # 配置常量
 BASE_URL = "https://szzdjc.cnemc.cn:8070/GJZ/Business/Publish/RealDatas.html"
-TARGET_REGION = "广西壮族自治区"
-TARGET_CITY = "桂林市"
+TARGET_REGION = "全国" ## 广西壮族自治区
+TARGET_CITY = ""
 DATA_DIR = Path("data")
 DATA_BASE_DIR = Path("data_base")
-RETRY_TIMES = 5
+RETRY_TIMES = 3
 WAIT_TIMEOUT = 30000  # 30秒
 
 
@@ -53,27 +54,33 @@ class WaterQualityMonitor:
         """初始化数据库表结构"""
         with closing(sqlite3.connect(self.db_path)) as conn:
             cursor = conn.cursor()
+
+            # # 删除旧表（仅在开发环境或首次部署时执行），执行前请先手动备份数据库
+            # cursor.execute("DROP TABLE IF EXISTS water_data")
+
             cursor.execute('''CREATE TABLE IF NOT EXISTS water_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-            省份 TEXT NOT NULL,                  -- 监测点所在省份
-            流域 TEXT,                           -- 所属流域信息
-            断面名称 TEXT NOT NULL,              -- 监测断面名称
-            监测时间 TEXT NOT NULL,              -- 数据唯一性标识（格式：YYYY-MM-DD HH:MM）
-            水质类别 TEXT NOT NULL,              -- 水质分类等级
-            水温 REAL CHECK(水温 >= 0),          -- 摄氏度
-            pH REAL CHECK(pH BETWEEN 0 AND 14), -- 酸碱度
-            溶解氧 REAL CHECK(溶解氧 >= 0),      -- mg/L
-            电导率 REAL CHECK(电导率 >= 0),      -- μS/cm
-            浊度 REAL CHECK(浊度 >= 0),          -- NTU
-            高锰酸盐指数 REAL CHECK(高锰酸盐指数 >= 0),  -- mg/L
-            氨氮 REAL CHECK(氨氮 >= 0),          -- mg/L
-            总磷 REAL CHECK(总磷 >= 0),          -- mg/L
-            总氮 REAL CHECK(总氮 >= 0),          -- mg/L
-            叶绿素α REAL CHECK(叶绿素α >= 0),    -- μg/L
-            藻密度 REAL CHECK(藻密度 >= 0),      -- cells/L
-            站点情况 TEXT,                       -- 站点状态描述
-            raw_json TEXT NOT NULL,              -- 原始数据备份
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                省份 TEXT NOT NULL,                  -- 监测点所在省份
+                流域 TEXT,                           -- 所属流域信息
+                断面名称 TEXT NOT NULL,              -- 监测断面名称
+                监测时间 TEXT NOT NULL,              -- 数据唯一性标识（格式：YYYY-MM-DD HH:MM）
+                水质类别 TEXT NOT NULL,              -- 水质分类等级
+                水温 REAL CHECK(水温 >= 0),          -- 摄氏度
+                pH REAL CHECK(pH BETWEEN 0 AND 14), -- 酸碱度
+                溶解氧 REAL CHECK(溶解氧 >= 0),      -- mg/L
+                电导率 REAL CHECK(电导率 >= 0),      -- μS/cm
+                浊度 REAL CHECK(浊度 >= 0),          -- NTU
+                高锰酸盐指数 REAL CHECK(高锰酸盐指数 >= 0),  -- mg/L
+                氨氮 REAL CHECK(氨氮 >= 0),          -- mg/L
+                总磷 REAL CHECK(总磷 >= 0),          -- mg/L
+                总氮 REAL CHECK(总氮 >= 0),          -- mg/L
+                叶绿素α REAL CHECK(叶绿素α >= 0),    -- μg/L
+                藻密度 REAL CHECK(藻密度 >= 0),      -- cells/L
+                站点情况 TEXT,                       -- 站点状态描述
+                raw_json TEXT NOT NULL,              -- 原始数据备份
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                -- 添加联合唯一约束 --
+                UNIQUE (监测时间, 断面名称)
             )''')
 
             # 创建联合索引
@@ -103,7 +110,15 @@ class WaterQualityMonitor:
             return None
         
     def _validate_data(self, item):
-        """数据有效性校验"""
+        """数据有效性校验（允许维护状态数据）"""
+
+        site_status = item.get("站点情况", {}).get("显示值", "")
+        
+        # 如果站点在维护，跳过时间校验
+        if site_status == "维护":
+            logger.warning(f"断面 [{item['断面名称']['显示值']} 处于维护状态，跳过数据校验")
+            return
+
         if not item["监测时间"]["显示值"]:
             raise ValueError("监测时间缺失")
         
@@ -115,7 +130,18 @@ class WaterQualityMonitor:
 
     def _save_to_db(self, data):
         """优化后的数据库存储"""
-        if not data:
+        filtered_data = []
+    
+        # 预处理：过滤维护状态数据
+        for item in data:
+            site_status = item.get("站点情况", {}).get("显示值", "")
+            # 状态有效性检查
+            if site_status != "正常":
+                logger.warning(f"跳过状态为 [{site_status}] 的数据：{item['断面名称']['显示值']}")
+                continue
+            filtered_data.append(item)
+
+        if not filtered_data:
             logger.warning("无有效数据需要存储")
             return
         success_count = 0
@@ -126,7 +152,7 @@ class WaterQualityMonitor:
                 # 开启事务
                 conn.execute("BEGIN TRANSACTION")
                 
-                for item in data:
+                for item in filtered_data:
                     try:
                         self._validate_data(item)
                         
@@ -215,23 +241,75 @@ class WaterQualityMonitor:
     def _select_region(self, page):
         """选择目标区域"""
         try:
-            # 省份选择
-            page.click("#ddm_Area")
-            page.wait_for_timeout(random.uniform(500, 1500))
+            if TARGET_REGION == "全国":
+                # 直接搜索空
+                # 全国模式：清空搜索框并点击搜索按钮
+                # 输入搜索前等待随机时间
+                page.wait_for_timeout(random.uniform(500, 1500))
+                # 清空搜索输入框
+                search_input = page.locator("#txt_SeachName")
+                search_input.fill("")
+
+                # 点击前等待随机时间
+                page.wait_for_timeout(random.uniform(500, 1500))
+                
+                # 点击搜索按钮
+                search_btn = page.locator("button:has-text('搜索')")
+                search_btn.click(timeout=WAIT_TIMEOUT)
+
+                # 等待加载（优化后的智能等待）
+                # page.wait_for_function("...", timeout=30000)
+                page.wait_for_timeout(random.uniform(30000, 40000))
+                
+                # 额外随机等待（1~3秒）
+                page.wait_for_timeout(random.uniform(1000, 3000))
+                logger.info("全国数据搜索成功")
+            else:
+                # 原有省份-城市选择逻辑
+                page.click("#ddm_Area")
+                page.wait_for_timeout(random.uniform(500, 1500))
+                # 定位省份元素
+                region_locator = page.locator(f"text={TARGET_REGION}")
+
+                if not TARGET_CITY:
+                    # 如果城市为空，直接点击省份
+                    region_locator.click(timeout=WAIT_TIMEOUT)
+                    logger.info(f"区域选择成功：{TARGET_REGION}")
+                else:
+                    # 模拟人类操作：悬停并选择城市
+                    region_locator.hover(timeout=WAIT_TIMEOUT)
+                    page.wait_for_timeout(random.uniform(1000, 2000))
+                    
+                    # 等待城市选项可见并点击
+                    city_locator = page.locator(f"text={TARGET_CITY}")
+                    expect(city_locator).to_be_visible(timeout=WAIT_TIMEOUT)
+                    page.wait_for_timeout(random.uniform(500, 1500))
+                    city_locator.click()
+                    logger.info(f"区域选择成功：{TARGET_REGION} -> {TARGET_CITY}")
+
+            # # 省份选择
+            # page.click("#ddm_Area")
+            # page.wait_for_timeout(random.uniform(500, 1500))
             
-            # 模拟人类操作：移动鼠标到目标区域
-            region_locator = page.locator(f"text={TARGET_REGION}")
-            region_locator.hover(timeout=WAIT_TIMEOUT)
-            page.wait_for_timeout(random.uniform(1000, 2000))
+            # # 定位省份元素
+            # region_locator = page.locator(f"text={TARGET_REGION}")
             
-            # 等待城市选项可见
-            city_locator = page.locator(f"text={TARGET_CITY}")
-            expect(city_locator).to_be_visible(timeout=WAIT_TIMEOUT)
-            
-            # 随机延迟后点击
-            page.wait_for_timeout(random.uniform(500, 1500))
-            city_locator.click()
-            logger.info("区域选择成功")
+            # if not TARGET_CITY:
+            #     # 如果城市为空，直接点击省份
+            #     region_locator.click(timeout=WAIT_TIMEOUT)
+            #     logger.info(f"区域选择成功：{TARGET_REGION}")
+            # else:
+            #     # 模拟人类操作：悬停并选择城市
+            #     region_locator.hover(timeout=WAIT_TIMEOUT)
+            #     page.wait_for_timeout(random.uniform(1000, 2000))
+                
+            #     # 等待城市选项可见并点击
+            #     city_locator = page.locator(f"text={TARGET_CITY}")
+            #     expect(city_locator).to_be_visible(timeout=WAIT_TIMEOUT)
+            #     page.wait_for_timeout(random.uniform(500, 1500))
+            #     city_locator.click()
+            #     logger.info(f"区域选择成功：{TARGET_REGION} -> {TARGET_CITY}")
+                
         except Exception as e:
             logger.error("区域选择失败", exc_info=True)
             raise
@@ -319,10 +397,16 @@ class WaterQualityMonitor:
             
             # 随机滚动页面模拟人类行为
             page.mouse.wheel(0, random.randint(100, 300))
-            page.wait_for_timeout(random.uniform(500, 1500))
+            page.wait_for_timeout(random.uniform(30000, 60000))
             
             data_rows = page.query_selector_all("#gridDatas li.news-item")
+
+            if not data_rows:
+                logger.error("数据加载失败：未找到任何数据记录")
+                raise ValueError("数据记录为空")  # 新增：抛出异常
+
             logger.info(f"发现 {len(data_rows)} 条数据记录")
+            logger.info(f"解析数据.....................")
             
             water_data = []
             for row in data_rows:
@@ -330,19 +414,22 @@ class WaterQualityMonitor:
             return water_data
         except TimeoutError:
             logger.warning("数据加载超时")
-            return []
+            raise e  # 修改：重新抛出异常，而非仅记录日志
         except Exception as e:
             logger.error("数据解析失败", exc_info=True)
-            return []
+            raise e  # 确保所有异常被抛出
 
     def _save_data(self, data: List[Dict]):
         """保存数据到文件"""
         if not data:
             logger.warning("未获取到有效数据，跳过保存")
-            return
+            raise ValueError("有效数据为空")  # 新增：抛出异常
         
         ### 保存到数据库
         self._save_to_db(data)
+
+        ### 备份数据库
+        self.backup_db()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
@@ -390,47 +477,67 @@ class WaterQualityMonitor:
             logger.error("文件保存失败", exc_info=True)
 
     def run(self):
-        """执行主流程"""
-        logger.info(f"########-----------------------爬取开始----------------###########：{datetime.now()}")
-        success = False
+        """执行主流程（优化版本）"""
+        logger.info(f"######## 爬虫启动，时间：{datetime.now()} ########")
+        success = False  # 初始化成功标志
+
         for attempt in range(RETRY_TIMES):
             try:
-                with sync_playwright() as p:
-                    browser, context = self._get_browser_context(p)
+                with sync_playwright() as playwright:
+                    # 初始化浏览器和页面
+                    browser, context = self._get_browser_context(playwright)
                     page = context.new_page()
                     
-                    # 访问页面
-                    page.goto(BASE_URL, timeout=WAIT_TIMEOUT)
-                    logger.info(f"成功访问页面：{BASE_URL}")
-                    
-                    # 区域选择
-                    self._select_region(page)
-                    
-                    # 数据抓取
-                    water_data = self._scrape_data(page)
-                    
-                    # 保存数据
-                    self._save_data(water_data)
+                    try:
+                        # 访问页面
+                        page.goto(BASE_URL, timeout=WAIT_TIMEOUT)
+                        logger.info(f"成功访问页面：{BASE_URL}")
+                        
+                        # 区域选择
+                        self._select_region(page)
+                        
+                        # 数据抓取（可能抛出异常）
+                        water_data = self._scrape_data(page)
+                        
+                        # 保存数据（可能抛出异常）
+                        self._save_data(water_data)
+                        
+                        success = True  # 标记为成功
+                        logger.info("数据抓取成功！")
+                        break  # 成功则跳出重试循环
 
-                    # 备份数据库
-                    self.backup_db()
-                    
-                    # 关闭浏览器
-                    browser.close()
-                    return True
-            except Exception as e:
-                logger.error(f"第 {attempt+1} 次尝试失败，错误类型：{type(e).__name__}")
+                    except Exception as inner_e:
+                        logger.error(f"第 {attempt+1} 次尝试失败，错误类型：{type(inner_e).__name__}，错误信息：{str(inner_e)}")
+                        raise  # 重新抛出异常以触发外层重试
+
+                    finally:
+                        # 确保每次运行后关闭浏览器
+                        browser.close()
+                        logger.info(f"第 {attempt+1} 次运行结束，浏览器已关闭")
+
+            except Exception as outer_e:
+                logger.error(f"第 {attempt+1} 次尝试失败，错误类型：{type(outer_e).__name__}，错误信息：{str(outer_e)}")
                 if attempt < RETRY_TIMES - 1:
                     wait_time = (2 ** attempt) * 10  # 指数退避
-                    logger.info(f"等待 {wait_time} 秒后重试...")
+                    logger.warning(f"等待 {wait_time} 秒后重试...")
                     time.sleep(wait_time)
-        if not success:
-            logger.critical(f"连续 {RETRY_TIMES} 次尝试失败，任务终止！")
-        return success
+
+        # 最终状态处理
+        if success:
+            logger.info("######## 任务执行成功 ########")
+        else:
+            logger.critical(f"######## 连续 {RETRY_TIMES} 次尝试失败，任务终止！########")
+        
+        return success  # 返回实际成功状态
 
 if __name__ == "__main__":
     monitor = WaterQualityMonitor()
-    if monitor.run():
-        logger.info("数据抓取任务执行成功")
-    else:
-        logger.error("数据抓取任务执行失败")
+    try:
+        result = monitor.run()
+        if result:
+            logger.info("数据抓取任务执行成功")
+        else:
+            logger.error("数据抓取任务执行失败")
+    except Exception as e:
+        logger.critical(f"程序发生未捕获的异常：{str(e)}", exc_info=True)
+        sys.exit(1)  # 非零退出码表示异常终止

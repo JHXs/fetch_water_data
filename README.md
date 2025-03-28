@@ -11,7 +11,7 @@
 
 ```bash
 # 每天每4小时执行一次，# 每4小时的15分钟运行（例如 0:15, 4:15, 8:15, 12:15, 16:15, 20:15）
-15 */4 * * * /home/hansel/ssd/test-water-data/.venv/bin/python /home/hansel/ssd/test-water-data/water_monitor.py
+15 */4 * * * cd /home/hansel/ssd/test-water-data && /home/hansel/ssd/test-water-data/.venv/bin/python /home/hansel/ssd/test-water-data/water_monitor.py
 ```
 
 ## 数据库的使用
