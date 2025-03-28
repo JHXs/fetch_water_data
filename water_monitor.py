@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # 配置常量
 BASE_URL = "https://szzdjc.cnemc.cn:8070/GJZ/Business/Publish/RealDatas.html"
-TARGET_REGION = "全国" ## 广西壮族自治区
+TARGET_REGION = "广西壮族自治区" ## 广西壮族自治区
 TARGET_CITY = ""
 DATA_DIR = Path("data")
 DATA_BASE_DIR = Path("data_base")
@@ -85,7 +85,7 @@ class WaterQualityMonitor:
 
             # 创建联合索引
             cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_断面_时间 
+                CREATE INDEX IF NOT EXISTS idx_断面_时间
                 ON water_data (断面名称, 监测时间 DESC)
             ''')
 

@@ -32,8 +32,8 @@ cd ~/ssd/test-water-data
 sqlite3 data/water_quality.db
 
 # 3. 执行 SQL 查询
-.header on       # 显示列名
-.mode column    # 列式显示
+.header on       -- 显示列名
+.mode column     -- 列式显示
 SELECT * FROM water_data LIMIT 3;
 
 # 4. 检查监测时间字段（示例输出）
