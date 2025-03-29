@@ -4,61 +4,83 @@ import logging
 import random
 import sys
 import time
+import pinyin
 import sqlite3
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
+from config import PROVINCE_MAPPING
 
 from playwright.sync_api import sync_playwright, expect, TimeoutError
 from fake_useragent import UserAgent
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("water_monitor.log"),
-        logging.StreamHandler()
-    ]
+# # 配置日志
+# logging.basicConfig(
+#     level=logging.INFO,
+#     # level=logging.DEBUG,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler("water_monitor.log"),
+#         logging.StreamHandler()
+#     ]
+# )
+logger = logging.getLogger(__name__) ##  # 继承根日志器配置
+
+### 从配置文件导入配置变量
+from config import (
+    BASE_URL,
+    DEFAULT_REGION,
+    DEFAULT_CITY,
+    DATA_DIR,
+    DATA_BASE_DIR,
+    RETRY_TIMES,
+    WAIT_TIMEOUT
 )
-logger = logging.getLogger(__name__)
-
-# 配置常量
-BASE_URL = "https://szzdjc.cnemc.cn:8070/GJZ/Business/Publish/RealDatas.html"
-TARGET_REGION = "广西壮族自治区" ## 广西壮族自治区
-TARGET_CITY = ""
-DATA_DIR = Path("data")
-DATA_BASE_DIR = Path("data_base")
-RETRY_TIMES = 3
-WAIT_TIMEOUT = 30000  # 30秒
-
 
 class WaterQualityMonitor:
-    def __init__(self):
-        self.user_agent = UserAgent().random
-        self.data_dir = DATA_DIR / datetime.now().strftime("%Y-%m-%d")
-        self.data_base_dir = DATA_BASE_DIR
-        self.db_back_dir = DATA_BASE_DIR / f"backups"
-        self._setup_directories()
-        self.db_path = self.data_base_dir / "water_quality.db"
-        self._init_db()
+    def __init__(self, target_region=DEFAULT_REGION, target_city=DEFAULT_CITY):
+        try:
+            self.user_agent = UserAgent().random
+            logger.info(f"初始化水质监测器，目标区域：{target_region}")
+            
+            self.TARGET_REGION = target_region
+            self.TARGET_CITY = target_city
+            self.data_dir = DATA_DIR / datetime.now().strftime("%Y-%m-%d")
+            self.data_base_dir = DATA_BASE_DIR
+
+            # 记录目录初始化过程
+            logger.debug("正在创建数据存储目录...")
+            self._setup_directories()
+            
+            # 记录数据库初始化过程
+            logger.debug("正在初始化数据库...")
+            self.db_path = self.data_base_dir / "water_quality.db"
+            self._init_db(province=target_region)
+            
+            logger.info("水质监测器初始化完成")
+        except Exception as e:
+            logger.critical("水质监测器初始化失败！", exc_info=True)
+            raise
 
     def _setup_directories(self):
         """创建数据存储目录"""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.data_base_dir.mkdir(parents=True, exist_ok=True)
-        self.db_back_dir.mkdir(parents=True, exist_ok=True)
 
-    def _init_db(self):
+    def _init_db(self, province):
         """初始化数据库表结构"""
+        """根据省份初始化数据库表"""
+        self.table_name = PROVINCE_MAPPING[province]
+        logger.debug(f"生成表名：{self.table_name}")  # 添加调试日志
+        
         with closing(sqlite3.connect(self.db_path)) as conn:
             cursor = conn.cursor()
 
             # # 删除旧表（仅在开发环境或首次部署时执行），执行前请先手动备份数据库
             # cursor.execute("DROP TABLE IF EXISTS water_data")
 
-            cursor.execute('''CREATE TABLE IF NOT EXISTS water_data (
+            cursor.execute(f'''CREATE TABLE IF NOT EXISTS "{self.table_name}" (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 省份 TEXT NOT NULL,                  -- 监测点所在省份
                 流域 TEXT,                           -- 所属流域信息
@@ -86,20 +108,12 @@ class WaterQualityMonitor:
             )''')
 
             # 创建联合索引
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_断面_时间
-                ON water_data (断面名称, 监测时间 DESC)
+            cursor.execute(f'''
+                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_断面_时间
+                ON {self.table_name} (断面名称, 监测时间 DESC)
             ''')
 
             conn.commit()
-
-    # 添加定期数据库备份功能
-    def backup_db(self):
-        backup_path = self.db_back_dir / f"backup_{datetime.now().strftime('%Y%m%d')}.db"
-        with closing(sqlite3.connect(self.db_path)) as src:
-            with closing(sqlite3.connect(backup_path)) as dest:
-                src.backup(dest)
-        logger.info(f"数据库备份完成：{backup_path}")
 
     def _convert_value(self, value, field_name):
         """安全类型转换（处理空值和异常）"""
@@ -118,7 +132,7 @@ class WaterQualityMonitor:
         
         # 如果站点在维护，跳过时间校验
         if site_status != "正常":
-            logger.warning(f"断面 [{item['断面名称']['显示值']} 处于维护状态，跳过数据校验")
+            logger.debug(f"断面 {item['断面名称']['显示值']} 处于维护状态，跳过数据校验")
             return
 
         if not item["监测时间"]["显示值"]:
@@ -130,18 +144,8 @@ class WaterQualityMonitor:
         except ValueError:
             raise ValueError(f"无效监测时间格式: {item['监测时间']['显示值']}")
 
-    def _save_to_db(self, data):
+    def _save_to_db(self, data, province):
         """优化后的数据库存储"""
-        # filtered_data = []
-    
-        # # 预处理：过滤维护状态数据
-        # for item in data:
-        #     site_status = item.get("站点情况", {}).get("显示值", "")
-        #     # 状态有效性检查
-        #     if site_status != "正常":
-        #         logger.warning(f"跳过状态为 [{site_status}] 的数据：{item['断面名称']['显示值']}")
-        #         continue
-        #     filtered_data.append(item)
 
         if not data:
             logger.warning("无有效数据需要存储")
@@ -181,7 +185,7 @@ class WaterQualityMonitor:
                             json.dumps(item, ensure_ascii=False)
                         )
                         
-                        cursor.execute('''INSERT OR IGNORE INTO water_data 
+                        cursor.execute(f'''INSERT OR IGNORE INTO {self.table_name} 
                             (省份, 流域, 所在地市, 所属河流, 断面名称, 监测时间, 水质类别,
                             水温, pH, 溶解氧, 电导率, 浊度,
                             高锰酸盐指数, 氨氮, 总磷, 总氮,
@@ -191,7 +195,7 @@ class WaterQualityMonitor:
                         if cursor.rowcount > 0:
                             success_count += 1
                         else:
-                            logger.warning(f"数据重复被忽略 - 时间+断面: {insert_data[3]} ({insert_data[2]})")  # 显示时间和断面名称
+                            logger.debug(f"数据重复被忽略 - 时间+断面: {insert_data[3]} ({insert_data[2]})")  # 显示时间和断面名称
                     except Exception as e:
                         logger.error(f"数据校验/插入失败: {str(e)} | 数据: {json.dumps(item)}")
                 
@@ -245,7 +249,7 @@ class WaterQualityMonitor:
     def _select_region(self, page):
         """选择目标区域"""
         try:
-            if TARGET_REGION == "全国":
+            if self.TARGET_REGION == "全国":
                 # 直接搜索空
                 # 全国模式：清空搜索框并点击搜索按钮
                 # 输入搜索前等待随机时间
@@ -255,14 +259,13 @@ class WaterQualityMonitor:
                 search_input.fill("")
 
                 # 点击前等待随机时间
-                page.wait_for_timeout(random.uniform(500, 1500))
+                page.wait_for_timeout(random.uniform(500, 1000))
                 
                 # 点击搜索按钮
                 search_btn = page.locator("button:has-text('搜索')")
                 search_btn.click(timeout=WAIT_TIMEOUT)
 
                 # 等待加载（优化后的智能等待）
-                # page.wait_for_function("...", timeout=30000)
                 page.wait_for_timeout(random.uniform(30000, 40000))
                 
                 # 额外随机等待（1~3秒）
@@ -273,46 +276,26 @@ class WaterQualityMonitor:
                 page.click("#ddm_Area")
                 page.wait_for_timeout(random.uniform(500, 1500))
                 # 定位省份元素
-                region_locator = page.locator(f"text={TARGET_REGION}")
+                region_locator = page.locator(f"text={self.TARGET_REGION}")
+                logger.debug(f"定位到省份：{self.TARGET_REGION}")
 
-                if not TARGET_CITY:
+                if not self.TARGET_CITY:
                     # 如果城市为空，直接点击省份
                     region_locator.click(timeout=WAIT_TIMEOUT)
-                    logger.info(f"区域选择成功：{TARGET_REGION}")
+                    page.wait_for_timeout(random.uniform(500, 1500))
+                    logger.info(f"区域选择成功：{self.TARGET_REGION}")
                 else:
                     # 模拟人类操作：悬停并选择城市
                     region_locator.hover(timeout=WAIT_TIMEOUT)
                     page.wait_for_timeout(random.uniform(1000, 2000))
                     
                     # 等待城市选项可见并点击
-                    city_locator = page.locator(f"text={TARGET_CITY}")
+                    city_locator = page.locator(f"text={self.TARGET_CITY}")
                     expect(city_locator).to_be_visible(timeout=WAIT_TIMEOUT)
                     page.wait_for_timeout(random.uniform(500, 1500))
                     city_locator.click()
-                    logger.info(f"区域选择成功：{TARGET_REGION} -> {TARGET_CITY}")
-
-            # # 省份选择
-            # page.click("#ddm_Area")
-            # page.wait_for_timeout(random.uniform(500, 1500))
-            
-            # # 定位省份元素
-            # region_locator = page.locator(f"text={TARGET_REGION}")
-            
-            # if not TARGET_CITY:
-            #     # 如果城市为空，直接点击省份
-            #     region_locator.click(timeout=WAIT_TIMEOUT)
-            #     logger.info(f"区域选择成功：{TARGET_REGION}")
-            # else:
-            #     # 模拟人类操作：悬停并选择城市
-            #     region_locator.hover(timeout=WAIT_TIMEOUT)
-            #     page.wait_for_timeout(random.uniform(1000, 2000))
-                
-            #     # 等待城市选项可见并点击
-            #     city_locator = page.locator(f"text={TARGET_CITY}")
-            #     expect(city_locator).to_be_visible(timeout=WAIT_TIMEOUT)
-            #     page.wait_for_timeout(random.uniform(500, 1500))
-            #     city_locator.click()
-            #     logger.info(f"区域选择成功：{TARGET_REGION} -> {TARGET_CITY}")
+                    page.wait_for_timeout(random.uniform(500, 1500))
+                    logger.info(f"区域选择成功：{self.TARGET_REGION} -> {self.TARGET_CITY}")
                 
         except Exception as e:
             logger.error("区域选择失败", exc_info=True)
@@ -398,12 +381,22 @@ class WaterQualityMonitor:
     def _scrape_data(self, page) -> List[Dict]:
         """抓取并解析数据"""
         try:
-            # 等待数据加载
+            # 主等待（确保元素存在）
             page.wait_for_selector("#gridDatas li.news-item", timeout=WAIT_TIMEOUT)
             
-            # 随机滚动页面模拟人类行为
-            page.mouse.wheel(0, random.randint(100, 300))
-            page.wait_for_timeout(random.uniform(30000, 60000))
+            # 人类化滚动
+            for _ in range(random.randint(2,4)):
+                page.mouse.wheel(0, random.randint(50, 150))
+                page.wait_for_timeout(random.uniform(800, 2500))  # 0.8-2.5秒
+
+            # 自适应等待
+            loaded_count = len(page.query_selector_all("#gridDatas li.news-item"))
+            base_wait = loaded_count * 500  # 每项基准500ms
+            adaptive_wait = random.uniform(
+                max(base_wait*0.5, 10000),  # 下限10秒
+                min(base_wait*1.5, 40000)   # 上限40秒
+            )
+            page.wait_for_timeout(adaptive_wait)
             
             data_rows = page.query_selector_all("#gridDatas li.news-item")
 
@@ -418,7 +411,7 @@ class WaterQualityMonitor:
             for row in data_rows:
                 water_data.append(self._parse_row(row))
             return water_data
-        except TimeoutError:
+        except TimeoutError as e:
             logger.warning("数据加载超时")
             raise e  # 修改：重新抛出异常，而非仅记录日志
         except Exception as e:
@@ -432,10 +425,7 @@ class WaterQualityMonitor:
             raise ValueError("有效数据为空")  # 新增：抛出异常
         
         ### 保存到数据库
-        self._save_to_db(data)
-
-        ### 备份数据库
-        # self.backup_db()
+        self._save_to_db(data,self.TARGET_REGION)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
