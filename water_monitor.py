@@ -276,7 +276,12 @@ class WaterQualityMonitor:
                 page.click("#ddm_Area")
                 page.wait_for_timeout(random.uniform(500, 1500))
                 # 定位省份元素
-                region_locator = page.locator(f"text={self.TARGET_REGION}")
+                # 使用组合选择器定位唯一元素
+                region_locator = page.locator(
+                    f"ul.dropdown-menu >> li.dropdown-submenu >> a.area-item:has-text('{self.TARGET_REGION}')"
+                )
+                # 增加可见性断言
+                expect(region_locator).to_be_visible(timeout=WAIT_TIMEOUT)
                 logger.debug(f"定位到省份：{self.TARGET_REGION}")
 
                 if not self.TARGET_CITY:
