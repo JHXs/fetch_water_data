@@ -40,6 +40,7 @@ from config import (
 
 class WaterQualityMonitor:
     def __init__(self, target_region=DEFAULT_REGION, target_city=DEFAULT_CITY):
+        logger.info(f"__init__()")
         try:
             self.user_agent = UserAgent().random
             logger.info(f"初始化水质监测器，目标区域：{target_region}")
@@ -58,19 +59,21 @@ class WaterQualityMonitor:
             self.db_path = self.data_base_dir / "water_quality.db"
             self._init_db(province=target_region)
             
-            logger.info("水质监测器初始化完成")
+            logger.info("水质监测器初始化完成--__init__()--")
         except Exception as e:
-            logger.critical("水质监测器初始化失败！", exc_info=True)
+            logger.critical("水质监测器初始化失败！--__init__()--", exc_info=True)
             raise
 
     def _setup_directories(self):
         """创建数据存储目录"""
+        logger.info(f"_setup_directories()")
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.data_base_dir.mkdir(parents=True, exist_ok=True)
 
     def _init_db(self, province):
         """初始化数据库表结构"""
         """根据省份初始化数据库表"""
+        logger.info(f"_init_db()")
         self.table_name = PROVINCE_MAPPING[province]
         logger.debug(f"生成表名：{self.table_name}")  # 添加调试日志
         
@@ -127,7 +130,6 @@ class WaterQualityMonitor:
         
     def _validate_data(self, item):
         """数据有效性校验（允许维护状态数据）"""
-
         site_status = item.get("站点情况", {}).get("显示值", "")
         
         # 如果站点在维护，跳过时间校验
@@ -146,6 +148,7 @@ class WaterQualityMonitor:
 
     def _save_to_db(self, data, province):
         """优化后的数据库存储"""
+        logger.info(f"_save_to_db()")
 
         if not data:
             logger.warning("无有效数据需要存储")
@@ -157,7 +160,7 @@ class WaterQualityMonitor:
                 
                 # 开启事务
                 conn.execute("BEGIN TRANSACTION")
-                
+
                 for item in data:
                     try:
                         self._validate_data(item)
@@ -208,6 +211,7 @@ class WaterQualityMonitor:
 
     def _get_browser_context(self, playwright):
         """创建浏览器上下文并设置反爬措施"""
+        logger.info(f"_get_browser_context()")
         browser = playwright.chromium.launch(
             headless=True,
             args=[
@@ -248,6 +252,7 @@ class WaterQualityMonitor:
 
     def _select_region(self, page):
         """选择目标区域"""
+        logger.info(f"_select_region()")
         try:
             if self.TARGET_REGION == "全国":
                 # 直接搜索空
@@ -355,7 +360,7 @@ class WaterQualityMonitor:
             try:
                 display_value = element.inner_text().strip() if element else None
                 raw_value = element.get_attribute("data-original-title") if element else None
-                # 特殊处理监测时间
+                # 特殊处理监测时间，添加年
                 if key == "监测时间":
                     display_value = self._complete_year(display_value)
                     if raw_value and "原始值" in raw_value:  # 如果原始值也需要处理
@@ -374,7 +379,7 @@ class WaterQualityMonitor:
                         river_parts = parts[1].split(":")
                         river = river_parts[1].strip() if len(river_parts) > 1 else ""
                         parsed_data["所属河流"] = {"显示值": river, "原始值": None}
-                    
+                
                 if raw_value and "原始值" in raw_value:
                     raw_value = raw_value.split("：")[-1].strip()
                 parsed_data[key] = {"显示值": display_value, "原始值": raw_value}
@@ -385,6 +390,7 @@ class WaterQualityMonitor:
 
     def _scrape_data(self, page) -> List[Dict]:
         """抓取并解析数据"""
+        logger.info(f"_scrape_data()")
         try:
             # 主等待（确保元素存在）
             page.wait_for_selector("#gridDatas li.news-item", timeout=WAIT_TIMEOUT)
@@ -413,6 +419,7 @@ class WaterQualityMonitor:
             logger.info(f"解析数据.....................")
             
             water_data = []
+            logger.info(f"_parse_row()")
             for row in data_rows:
                 water_data.append(self._parse_row(row))
             return water_data
@@ -425,6 +432,7 @@ class WaterQualityMonitor:
 
     def _save_data(self, data: List[Dict]):
         """保存数据到文件"""
+        logger.info(f"_save_data()")
         if not data:
             logger.warning("未获取到有效数据，跳过保存")
             raise ValueError("有效数据为空")  # 新增：抛出异常
@@ -480,6 +488,7 @@ class WaterQualityMonitor:
 
     def run(self):
         """执行主流程（优化版本）"""
+        logger.info(f"run()")
         logger.info(f"######## 爬虫启动，时间：{datetime.now()} ########")
         success = False  # 初始化成功标志
 
