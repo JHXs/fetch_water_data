@@ -94,12 +94,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pinyin"
-version = "0.4.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/32/95/d2969f1071b7bc0afff407d1d7b4b3f445e8e6b59df7921c9c09e35ee375/pinyin-0.4.0.tar.gz", hash = "sha256:8842ae53cb7a81c8c3ec03d1cd7dba9aedb20d8d6962aebc620fad74da0868f5", size = 3632130 }
-
-[[package]]
 name = "playwright"
 version = "1.51.0"
 source = { registry = "https://pypi.org/simple" }
@@ -135,14 +129,12 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fake-useragent" },
-    { name = "pinyin" },
     { name = "playwright" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fake-useragent", specifier = ">=2.1.0" },
-    { name = "pinyin", specifier = ">=0.4.0" },
     { name = "playwright", specifier = ">=1.51.0" },
 ]
 

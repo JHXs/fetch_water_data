@@ -5,7 +5,7 @@ import os
 from config import DATA_DIR,DATA_BASE_DIR,LOG_DIR
 
 ### 路径及文件配置
-OUT_DIR = DATA_DIR / "sqlite2csv"
+OUT_DIR = DATA_DIR / "0_sqlite2csv"
 
 out_file = OUT_DIR / "output.csv"
 db_file = DATA_BASE_DIR / "water_quality.db"
