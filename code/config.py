@@ -6,13 +6,26 @@ BASE_URL = "https://szzdjc.cnemc.cn:8070/GJZ/Business/Publish/RealDatas.html"
 WAIT_TIMEOUT = 30000  # 30秒（单位：毫秒）
 RETRY_TIMES = 3
 
+# 获取当前脚本所在目录（假设脚本在 code/ 下）
+SCRIPT_DIR = Path(__file__).parent
+# 项目根目录（code 的父目录）
+PROJECT_ROOT = SCRIPT_DIR.parent
+
 # 存储配置
-DATA_DIR = Path("data")
-DATA_BASE_DIR = Path("data_base")
+# DATA_DIR = Path("../data")
+# DATA_BASE_DIR = Path("../data_base")
+DATA_DIR = PROJECT_ROOT / "data"
+DATA_BASE_DIR = PROJECT_ROOT / "data_base"
+LOG_DIR = PROJECT_ROOT / "logs"
 
 # 目标区域配置（当单独运行时生效）
 DEFAULT_REGION = "广西壮族自治区"
 DEFAULT_CITY = ""
+
+# ## 使用少数几个省份
+# PROVINCES = [
+#     "广东省", "广西壮族自治区", "海南省"
+# ]
 
 ## 省份列表（用于全国爬取）
 PROVINCES = [
@@ -48,11 +61,6 @@ PROVINCES = [
     "宁夏回族自治区",
     "新疆维吾尔自治区"
 ]
-
-### 使用少数几个省份
-# PROVINCES = [
-#     "广东省", "广西壮族自治区", "海南省"
-# ]
 
 PROVINCE_MAPPING = {
     # 直辖市

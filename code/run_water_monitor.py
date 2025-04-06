@@ -1,15 +1,20 @@
 # run_national.py
 import random
 import time
+import os
 import logging
 from logging.handlers import RotatingFileHandler
-from config import PROVINCES
+from pathlib import Path
+from config import PROVINCES,LOG_DIR
 from water_monitor import WaterQualityMonitor
 
 # 配置日志
 def configure_logging():
     """统一日志配置（仅在主模块中调用一次）"""
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    # 1. 动态构建日志目录路径（确保目录存在）
+    os.makedirs(LOG_DIR, exist_ok=True)  # 自动创建目录（如果不存在）
+    log_file = Path(LOG_DIR) / "run_water_monitor.log"
     
     # 根日志器配置
     logging.basicConfig(
@@ -17,9 +22,10 @@ def configure_logging():
         format=log_format,
         handlers=[
             RotatingFileHandler(
-                "run_water_monitor.log",
+                filename=str(log_file),
                 maxBytes=10*1024*1024,  # 10MB
-                backupCount=5
+                backupCount=5,
+                encoding="utf-8"        # 显式指定编码（避免 Windows 下乱码）
             ),
             logging.StreamHandler()
         ]

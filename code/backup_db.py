@@ -3,17 +3,19 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
+from config import DATA_BASE_DIR,LOG_DIR
 
-DATA_BASE_DIR = Path("data_base")
+# DATA_BASE_DIR = Path("data_base")
 db_back_dir = DATA_BASE_DIR / f"backups"
 db_path = DATA_BASE_DIR / "water_quality.db"
+log_file = LOG_DIR / "backup_db.log"
 
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("backup_db.log"),
+        logging.FileHandler(str(log_file)),
         logging.StreamHandler()
     ]
 )
