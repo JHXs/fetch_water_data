@@ -58,9 +58,9 @@ class WaterQualityMonitor:
             self.db_path = self.data_base_dir / "water_quality.db"
             self._init_db(province=target_region)
             
-            logger.info("水质监测器初始化完成--__init__()--")
+            logger.info("水质监测器初始化完成")
         except Exception as e:
-            logger.critical("水质监测器初始化失败！--__init__()--", exc_info=True)
+            logger.critical("水质监测器初始化失败！", exc_info=True)
             raise
 
     def _setup_directories(self):
@@ -487,7 +487,7 @@ class WaterQualityMonitor:
 
     def run(self):
         """执行主流程（优化版本）"""
-        logger.info(f"run()")
+        logger.debug(f"run()")
         logger.info(f"######## 爬虫启动，时间：{datetime.now()} ########")
         success = False  # 初始化成功标志
 
