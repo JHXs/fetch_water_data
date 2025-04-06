@@ -12,10 +12,12 @@ wheels/
 # custom
 data/
 data_base/
+logs/
+code/fetch_water_data.py
+code/test.py
+code/test1.py
+code/__pycache__/
 记录.md
-fetch_water_data.py
-test.py
-test1.py
 *.log
 html/
 data.csv
