@@ -3,8 +3,9 @@ import random
 import time
 import os
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from datetime import datetime
 from config import PROVINCES,LOG_DIR
 from water_monitor import WaterQualityMonitor
 
@@ -14,17 +15,18 @@ def configure_logging():
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     # 1. 动态构建日志目录路径（确保目录存在）
     os.makedirs(LOG_DIR, exist_ok=True)  # 自动创建目录（如果不存在）
-    log_file = Path(LOG_DIR) / "run_water_monitor.log"
+    log_file = Path(LOG_DIR) / f"run_water_monitor_{datetime.now().strftime('%Y%m%d')}.log"
     
     # 根日志器配置
     logging.basicConfig(
         level=logging.INFO,  ##  日志级别
         format=log_format,
         handlers=[
-            RotatingFileHandler(
+            TimedRotatingFileHandler(
                 filename=str(log_file),
-                maxBytes=10*1024*1024,  # 10MB
-                backupCount=5,
+                when='midnight',  # 每天午夜轮转
+                interval=7,       # 间隔7天
+                backupCount=4,   # 保留28天日志
                 encoding="utf-8"        # 显式指定编码（避免 Windows 下乱码）
             ),
             logging.StreamHandler()

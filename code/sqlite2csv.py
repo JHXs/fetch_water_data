@@ -2,12 +2,13 @@ import sqlite3
 import logging
 import csv
 import os
+from datetime import datetime
 from config import DATA_DIR,DATA_BASE_DIR,LOG_DIR
 
 ### 路径及文件配置
 OUT_DIR = DATA_DIR / "0_sqlite2csv"
-
-out_file = OUT_DIR / "output.csv"
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+out_file = OUT_DIR / f"water_quality_{timestamp}.csv"
 db_file = DATA_BASE_DIR / "water_quality.db"
 log_file = LOG_DIR / "sqlite2csv.log"
 
@@ -54,3 +55,4 @@ finally:
     # 确保连接关闭
     logger.info(f"数据库导出完成：{out_file}")
     conn.close()
+    
