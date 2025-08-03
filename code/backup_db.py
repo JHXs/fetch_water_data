@@ -21,6 +21,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+MAX_BACKUPS = 5          # 最多保留的备份数
 
 # 添加定期数据库备份功能
 def backup_db():
@@ -29,6 +30,14 @@ def backup_db():
         with closing(sqlite3.connect(backup_path)) as dest:
             src.backup(dest)
     logger.info(f"数据库备份完成：{backup_path}")
+
+    # 2. 清理旧备份
+    backups = sorted(db_back_dir.glob("backup_*.db"),
+                     key=lambda p: p.stat().st_mtime,
+                     reverse=True)
+    for old in backups[MAX_BACKUPS:]:
+        old.unlink(missing_ok=True)
+        logger.info(f"删除旧备份：{old}")
 
 if __name__ == "__main__":
     backup_db()
